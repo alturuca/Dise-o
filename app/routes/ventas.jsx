@@ -1,30 +1,72 @@
 import React, { useState } from 'react';
 import VentaForm from '../components/VentaForm';
-import { ShoppingBag, History, CreditCard } from 'lucide-react';
+import { ShoppingBag, History, CreditCard, FileDown } from 'lucide-react'; // Añadimos FileDown
+import axios from 'axios';
 
 const Ventas = () => {
   const [ventas, setVentas] = useState([]);
 
-  const handleGuardarVenta = (nuevaVenta) => {
-    // Generamos un ID basado en el timestamp para evitar duplicados
-    const ventaId = Date.now();
+  // --- FUNCIÓN PARA DESCARGAR EL PDF ---
+  const descargarPDF = async (facturaId) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`http://127.0.0.1:8000/api/v1/facturas/${facturaId}/exportar_pdf/`, {
+        headers: { 
+          'Authorization': `Bearer ${token}` 
+        },
+        responseType: 'blob', // Necesario para manejar archivos binarios
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Factura_StocklyX_${facturaId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error al descargar el PDF:", error);
+      alert("No se pudo obtener el PDF. Verifica que la factura exista en el servidor.");
+    }
+  };
+
+  const handleGuardarVenta = async (datosDelFormulario) => {
+  try {
+    const token = localStorage.getItem('access_token');
     
-    const nuevosRegistros = nuevaVenta.detalles.map((detalle) => ({
-      id: ventaId,
+    // 1. Enviar la venta al Backend (Django)
+    const response = await axios.post('http://127.0.0.1:8000/api/v1/facturas/', datosDelFormulario, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    const facturaCreada = response.data; // Aquí viene el ID real de la base de datos
+
+    // 2. Actualizar el historial local con los datos reales
+    const nuevosRegistros = datosDelFormulario.detalles.map((detalle) => ({
+      id: facturaCreada.numero, // El número de factura generado por Django
       fecha: new Date().toLocaleDateString(),
-      cliente: nuevaVenta.cliente,
-      producto: detalle.producto,
+      cliente: datosDelFormulario.cliente,
+      producto: detalle.producto_nombre || "Producto", 
       cantidad: detalle.cantidad,
       precioUnitario: detalle.precio_unitario,
       subtotal: detalle.cantidad * detalle.precio_unitario
     }));
 
     setVentas((prev) => [...nuevosRegistros, ...prev]);
-  };
+
+    // 3. OPCIONAL: Descargar automáticamente la factura recién creada
+    descargarPDF(facturaCreada.numero);
+
+  } catch (error) {
+    console.error("Error al emitir factura:", error);
+    alert("Error de conexión: " + (error.response?.data?.detail || "No se pudo guardar la venta en el servidor."));
+  }
+};
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* CABECERA DE LA PÁGINA */}
+      {/* CABECERA */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-200">
@@ -44,12 +86,11 @@ const Ventas = () => {
         </div>
       </div>
 
-      {/* COMPONENTE PRINCIPAL DEL FORMULARIO */}
       <div className="grid grid-cols-1 gap-6">
         <VentaForm onGuardar={handleGuardarVenta} />
       </div>
 
-      {/* HISTORIAL RECIENTE (Opcional debajo del form) */}
+      {/* HISTORIAL RECIENTE CON BOTÓN DE PDF */}
       {ventas.length > 0 && (
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-4 bg-gray-50 border-b flex items-center gap-2 font-bold text-gray-700 text-sm">
@@ -61,8 +102,9 @@ const Ventas = () => {
                 <tr>
                   <th className="px-6 py-3">Cliente</th>
                   <th className="px-6 py-3">Producto</th>
-                  <th className="px-6 py-3">Cant.</th>
+                  <th className="px-6 py-3 text-center">Cant.</th>
                   <th className="px-6 py-3 text-right">Total</th>
+                  <th className="px-6 py-3 text-center">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -70,9 +112,18 @@ const Ventas = () => {
                   <tr key={i} className="hover:bg-gray-50/50">
                     <td className="px-6 py-3 font-bold">{v.cliente}</td>
                     <td className="px-6 py-3">{v.producto}</td>
-                    <td className="px-6 py-3">{v.cantidad}</td>
+                    <td className="px-6 py-3 text-center">{v.cantidad}</td>
                     <td className="px-6 py-3 text-right font-black text-blue-600">
                       ${v.subtotal.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-3 text-center">
+                      <button
+                        onClick={() => descargarPDF(v.id)}
+                        className="p-2 bg-gray-100 hover:bg-blue-100 text-gray-600 hover:text-blue-600 rounded-lg transition-colors"
+                        title="Descargar Factura PDF"
+                      >
+                        <FileDown size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}
