@@ -14,7 +14,7 @@ import {
 
 const Dashboard = () => {
   const [stats, setStats] = useState([]);
-  const [productosCriticos, setProductosCriticos] = useState([]); // ✅ Nuevo estado real
+  const [productosCriticos, setProductosCriticos] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -22,31 +22,29 @@ const Dashboard = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('access_token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
       
       // 1. Petición de Estadísticas (Ventas, Stock Total, Conteo Bajo)
-      const resStats = await axios.get('http://127.0.0.1:8000/api/v1/dashboard-stats/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const resStats = await axios.get('http://127.0.0.1:8000/api/v1/dashboard-stats/', config);
 
-      // 2. Petición de Productos con Stock Bajo (Reutilizamos tu ProductoViewSet con un filtro)
-      // O puedes crear un endpoint específico si prefieres
-      const resCriticos = await axios.get('http://127.0.0.1:8000/api/v1/productos/?stock_lte=10', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // 2. Petición de Productos con Stock Bajo
+      const resCriticos = await axios.get('http://127.0.0.1:8000/api/v1/productos/?stock_lte=10', config);
 
+      // Mapeo de iconos basado en el ID definido en el Backend
       const iconMap = {
-        1: <TrendingUp className="text-green-600" />,
-        2: <PackageSearch className="text-blue-600" />,
-        4: <AlertTriangle className="text-red-600" />,
+        1: <TrendingUp className="text-green-600" />,     // Ventas del día
+        2: <PackageSearch className="text-blue-600" />,   // Valor total inventario
+        4: <AlertTriangle className="text-red-600" />,    // Productos stock bajo
       };
 
-      const dataConIconos = resStats.data.map(item => ({
+      // CORRECCIÓN AQUÍ: Accedemos a resStats.data.stats_cards
+      const dataConIconos = (resStats.data.stats_cards || []).map(item => ({
         ...item,
         icon: iconMap[item.id] || <PackageSearch size={20} />
       }));
 
       setStats(dataConIconos);
-      setProductosCriticos(resCriticos.data.slice(0, 5)); // Mostramos solo los primeros 5
+      setProductosCriticos(resCriticos.data.slice(0, 5)); 
     } catch (error) {
       console.error("Error cargando StocklyX:", error);
     } finally {
@@ -81,7 +79,7 @@ const Dashboard = () => {
         </button>
       </div>
 
-      {/* MÉTRICAS (3 Columnas) */}
+      {/* MÉTRICAS (Basadas en stats_cards del backend) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {stats.map((item) => (
           <div key={item.id} className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm transition-all hover:shadow-md">
@@ -102,7 +100,7 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* TABLA DE STOCK CRÍTICO (DATOS REALES) */}
+        {/* TABLA DE STOCK CRÍTICO */}
         <div className="lg:col-span-2 bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
             <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wider">
@@ -125,7 +123,7 @@ const Dashboard = () => {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {productosCriticos.map((prod) => (
-                  <tr key={prod.sku} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={prod.id || prod.sku} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-8 py-4">
                       <p className="font-bold text-gray-800">{prod.nombre}</p>
                       <p className="text-[10px] text-gray-400 font-mono">{prod.sku}</p>

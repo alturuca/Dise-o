@@ -8,11 +8,18 @@ export default function AnalisisDetallado() {
   const [datos, setDatos] = useState(null);
 
   useEffect(() => {
-    // Aquí llamas a tu nueva vista de Django que calcula diario, semanal y mensual
-    fetch('http://localhost:8000/api/v1/reporte-utilidad/')
-      .then(res => res.json())
-      .then(data => setDatos(data));
-  }, []);
+  const token = localStorage.getItem('access_token'); // Recuperar token
+  
+  fetch('http://127.0.0.1:8000/api/v1/reporte-utilidad/', {
+    headers: {
+      'Authorization': `Bearer ${token}`, // Header vital
+      'Content-Type': 'application/json'
+    }
+  })
+    .then(res => res.json())
+    .then(data => setDatos(data))
+    .catch(err => console.error("Error en StocklyX:", err));
+}, []);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8 space-y-8 text-black">

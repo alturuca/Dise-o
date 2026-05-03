@@ -15,7 +15,7 @@ export default [
     route("reportes", "routes/reportes.jsx"),
     route("reporteventas", "routes/reporteventas.jsx"),
     route("reportemensual", "routes/reportemensual.jsx"),
-    route("app.analisis-detallado", "routes/app.analisis-detallado.jsx"),
+    route("analisis-detallado", "routes/app.analisis-detallado.jsx"),
   ]),
 
   route(".well-known/*", "routes/ignore.jsx"),

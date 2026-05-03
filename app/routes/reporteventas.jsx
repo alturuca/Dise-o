@@ -16,32 +16,32 @@ const ReporteVentas = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Definimos una meta mensual (puedes ajustarla según necesites en Popayán)
   const META_MENSUAL = 10000000; 
 
   const fetchDatos = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('access_token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
       
-      // 1. Traemos las estadísticas generales (ventas_dia, ventas_mes, etc.)
-      const resStats = await axios.get('http://127.0.0.1:8000/api/v1/reporte-ventas/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setDatosStats(resStats.data);
+      // 1. Endpoint Unificado: Usamos el que ya calcula totales reales en Django
+      const resStats = await axios.get('http://127.0.0.1:8000/api/v1/reporte-ventas/', config);
+      
+      // Sincronizamos con la llave 'totales' del backend
+      setDatosStats(resStats.data.totales);
 
-      // 2. Traemos todas las facturas
-      const resFacturas = await axios.get('http://127.0.0.1:8000/api/v1/facturas/', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // 2. Traemos facturas para el listado detallado
+      const resFacturas = await axios.get('http://127.0.0.1:8000/api/v1/facturas/', config);
       
-      // Filtrado local por fecha de hoy (formato YYYY-MM-DD)
-      const hoyStr = new Date().toISOString().split('T')[0];
-      const facturasHoy = resFacturas.data.filter(f => f.fecha.startsWith(hoyStr));
+      // Filtrado robusto: Obtenemos la fecha local actual en formato YYYY-MM-DD
+      const hoy = new Date();
+      const hoyStr = new Date().toISOString().split('T')[0]; // Retorna YYYY-MM-DD
+      
+      const facturasHoy = resFacturas.data.filter(f => f.fecha.includes(hoyStr));
       
       setVentas(facturasHoy);
     } catch (error) {
-      console.error("Error cargando reporte:", error);
+      console.error("Error cargando reporte en StocklyX:", error);
     } finally {
       setLoading(false);
     }
@@ -57,8 +57,8 @@ const ReporteVentas = () => {
     maximumFractionDigits: 0 
   }).format(v || 0);
 
-  // Cálculo de porcentaje para la barra de progreso
-  const porcentajeMeta = Math.min(Math.round(((datosStats?.ventas_mes || 0) / META_MENSUAL) * 100), 100);
+  // Ajuste de llaves: usamos .hoy y .mes según el backend
+  const porcentajeMeta = Math.min(Math.round(((datosStats?.mes || 0) / META_MENSUAL) * 100), 100);
 
   if (loading) return (
     <div className="flex h-screen flex-col items-center justify-center gap-4">
@@ -83,7 +83,9 @@ const ReporteVentas = () => {
           </button>
           <div>
             <h1 className="text-2xl font-black text-gray-900 tracking-tighter leading-tight">Ventas del Día</h1>
-            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">{new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">
+              {new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
           </div>
         </div>
         <button className="hidden md:flex items-center gap-2 px-6 py-3 bg-[#0A1F44] text-white rounded-2xl font-black text-xs hover:bg-blue-900 transition-all shadow-xl shadow-blue-200 uppercase tracking-tighter">
@@ -91,27 +93,27 @@ const ReporteVentas = () => {
         </button>
       </div>
 
-      {/* TARJETAS DE RESUMEN DINÁMICO */}
+      {/* TARJETAS DE RESUMEN */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* RECAUDO DIARIO */}
         <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-8 rounded-[2.5rem] text-white shadow-xl shadow-blue-900/20 relative overflow-hidden group">
           <TrendingUp size={100} className="absolute -right-4 -top-4 opacity-10 group-hover:scale-110 transition-transform duration-700" />
           <p className="text-blue-100 font-black text-[10px] uppercase tracking-[0.2em]">Total Recaudado Hoy</p>
           <h2 className="text-5xl font-black mt-2 tracking-tighter">
-            {formatearCOP(datosStats?.ventas_dia)}
+            {/* Usamos .hoy en lugar de .ventas_dia */}
+            {formatearCOP(datosStats?.hoy)}
           </h2>
           <div className="mt-4 flex items-center gap-2">
-            <span className="bg-white/20 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter">Caja de Popayán</span>
+            <span className="bg-white/20 px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter">Caja Popayán</span>
           </div>
         </div>
 
-        {/* PROGRESO MENSUAL */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-center relative group">
           <div className="flex justify-between items-end mb-2">
             <div>
               <p className="text-gray-400 font-black text-[10px] uppercase tracking-[0.2em]">Rendimiento Mensual</p>
               <h2 className="text-3xl font-black text-gray-900 mt-1 tracking-tighter">
-                {formatearCOP(datosStats?.ventas_mes)}
+                {/* Usamos .mes en lugar de .ventas_mes */}
+                {formatearCOP(datosStats?.mes)}
               </h2>
             </div>
             <div className="text-right">
@@ -128,7 +130,7 @@ const ReporteVentas = () => {
             />
           </div>
           <p className="text-[9px] text-gray-400 mt-4 font-black uppercase tracking-widest text-center">
-            Meta del mes: {formatearCOP(META_MENSUAL)}
+            Meta: {formatearCOP(META_MENSUAL)}
           </p>
         </div>
       </div>
@@ -138,7 +140,7 @@ const ReporteVentas = () => {
         <div className="p-6 border-b border-gray-50 bg-gray-50/30 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText size={18} className="text-blue-600" />
-            <h3 className="font-black text-[10px] text-gray-400 uppercase tracking-widest">Registros de hoy</h3>
+            <h3 className="font-black text-[10px] text-gray-400 uppercase tracking-widest">Registros detallados</h3>
           </div>
           <span className="text-[10px] font-black bg-gray-100 text-gray-500 px-3 py-1 rounded-lg">
             {ventas.length} TRANSACCIONES
@@ -150,35 +152,25 @@ const ReporteVentas = () => {
               <tr>
                 <th className="px-8 py-4"><Hash size={14} /></th>
                 <th className="px-8 py-4">Cliente</th>
-                <th className="px-8 py-4 text-center">Productos</th>
-                <th className="px-8 py-4 text-right">Monto Total</th>
+                <th className="px-8 py-4 text-center">Items</th>
+                <th className="px-8 py-4 text-right">Monto</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {ventas.map((v) => (
                 <tr key={v.id || v.numero} className="hover:bg-blue-50/30 transition-colors group">
                   <td className="px-8 py-5 font-mono text-blue-600 font-black text-xs">#{v.numero || v.id}</td>
-                  <td className="px-8 py-5 font-black text-gray-800 uppercase text-[11px] tracking-tight">{v.cliente}</td>
+                  <td className="px-8 py-5 font-black text-gray-800 uppercase text-[11px] tracking-tight">{v.cliente || 'Consumidor Final'}</td>
                   <td className="px-8 py-5 text-center">
                      <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg font-black text-[9px] border border-blue-100">
                        {v.detalles?.length || 0} ITEMS
                      </span>
                   </td>
                   <td className="px-8 py-5 text-right font-black text-gray-900 text-lg tracking-tighter">
-                    {formatearCOP(v.total || 0)}
+                    {formatearCOP(v.total)}
                   </td>
                 </tr>
               ))}
-              {ventas.length === 0 && (
-                <tr>
-                  <td colSpan="4" className="px-8 py-24 text-center">
-                    <div className="flex flex-col items-center opacity-20">
-                      <FileText size={48} className="mb-2" />
-                      <p className="font-black text-xs uppercase tracking-[0.3em]">Sin ventas hoy</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
