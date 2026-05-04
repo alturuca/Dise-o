@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   Search, Plus, ShoppingCart, User, Package, 
-  DollarSign, CheckCircle, Calculator, ArrowRight 
+  DollarSign, CheckCircle, Calculator, ArrowRight, X
 } from 'lucide-react';
 
 const PRODUCTOS_API = 'http://127.0.0.1:8000/api/v1/productos/';
 const FACTURAS_API = 'http://127.0.0.1:8000/api/v1/facturas/';
 
 const VentaForm = ({ onGuardar }) => {
-  const [sku, setSku] = useState('');
+  const [busqueda, setBusqueda] = useState(''); // Estado para SKU o Nombre
+  const [sugerencias, setSugerencias] = useState([]); // Lista de resultados
   const [productoActual, setProductoActual] = useState(null);
   const [cliente, setCliente] = useState('');
   const [cantidad, setCantidad] = useState('1'); 
@@ -18,60 +19,65 @@ const VentaForm = ({ onGuardar }) => {
   const [dineroRecibido, setDineroRecibido] = useState('');
   const [cambio, setCambio] = useState(0);
 
-  // --- LÓGICA DE DINERO Y CAMBIO ---
+  // --- BUSQUEDA DINÁMICA ---
+  useEffect(() => {
+    const buscarSugerencias = async () => {
+      if (busqueda.length < 2) {
+        setSugerencias([]);
+        return;
+      }
+
+      const token = localStorage.getItem('access_token');
+      try {
+        // Buscamos usando el query param ?search= (estándar de DRF)
+        const res = await axios.get(`${PRODUCTOS_API}?search=${busqueda}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setSugerencias(res.data.results || res.data); // Maneja paginación o lista simple
+      } catch (error) {
+        console.error("Error buscando productos:", error);
+      }
+    };
+
+    const timeoutId = setTimeout(buscarSugerencias, 300); // Debounce de 300ms
+    return () => clearTimeout(timeoutId);
+  }, [busqueda]);
+
+  const seleccionarProducto = (prod) => {
+    setProductoActual(prod);
+    setBusqueda(prod.nombre);
+    setSugerencias([]);
+  };
+
   const manejarDineroRecibido = (valor) => {
     setDineroRecibido(valor);
     const recibido = parseFloat(valor) || 0;
     setCambio(recibido - totalVenta);
   };
 
-  // ✅ CORRECCIÓN: Se envían los datos antes de resetear el estado
   const finalizarProceso = () => {
     if (onGuardar) {
-      onGuardar({
-        cliente: cliente,
-        detalles: detalles
-      });
+      onGuardar({ cliente, detalles });
     }
-    
-    // Reseteo del formulario
     setMostrarVuelto(false);
     setCliente('');
     setDetalles([]);
     setDineroRecibido('');
     setCambio(0);
-    setSku('');
-  };
-
-  // --- LÓGICA DE PRODUCTOS ---
-  const buscarProducto = async () => {
-    const cleanSku = sku.trim();
-    if (!cleanSku) return;
-    const token = localStorage.getItem('access_token');
-    try {
-      const res = await axios.get(`${PRODUCTOS_API}${cleanSku}/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setProductoActual(res.data);
-    } catch (error) {
-      alert('Producto no encontrado en la base de datos.');
-      setProductoActual(null);
-    }
+    setBusqueda('');
   };
 
   const agregarProducto = () => {
     if (!productoActual) return;
-    
     const cantidadInt = Math.floor(Number(cantidad));
 
     if (isNaN(cantidadInt) || cantidadInt <= 0) {
-      alert('La cantidad debe ser un número entero mayor a 0');
-      setCantidad('1');
+      alert('Cantidad inválida');
       return;
     }
 
     if (productoActual.stock < cantidadInt) {
-      alert(`¡Atención! Solo quedan ${productoActual.stock} unidades.`);
+      alert(`Solo quedan ${productoActual.stock} unidades.`);
       return;
     }
 
@@ -84,17 +90,15 @@ const VentaForm = ({ onGuardar }) => {
 
     setDetalles([detalle, ...detalles]);
 
-    // Actualización de stock en Django (Opcional si tu backend ya lo hace en el POST de factura)
-    const nuevoStock = productoActual.stock - cantidadInt;
+    // Actualización de stock opcional
     const token = localStorage.getItem('access_token');
-    axios.put(`${PRODUCTOS_API}${productoActual.sku}/`, {
-      ...productoActual,
-      stock: nuevoStock,
+    axios.patch(`${PRODUCTOS_API}${productoActual.sku}/`, {
+      stock: productoActual.stock - cantidadInt,
     }, {
       headers: { Authorization: `Bearer ${token}` },
     }).catch(err => console.error("Error stock:", err));
 
-    setSku('');
+    setBusqueda('');
     setProductoActual(null);
     setCantidad('1');
   };
@@ -103,25 +107,22 @@ const VentaForm = ({ onGuardar }) => {
     e.preventDefault();
     const token = localStorage.getItem('access_token');
     if (!token || !cliente || detalles.length === 0) {
-      alert("Completa el cliente y agrega productos.");
+      alert("Faltan datos");
       return;
     }
 
-    const factura = { cliente, detalles };
     try {
-      await axios.post(FACTURAS_API, factura, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      await axios.post(FACTURAS_API, { cliente, detalles }, {
+        headers: { Authorization: `Bearer ${token}` },
       });
       setMostrarVuelto(true);
     } catch (error) {
-      alert('Error al procesar la factura en el servidor.');
+      alert('Error en el servidor.');
     }
   };
 
   const totalVenta = detalles.reduce((acc, item) => acc + item.cantidad * item.precio_unitario, 0);
-
-  const formatearCOP = (valor) =>
-    new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(valor);
+  const formatearCOP = (valor) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(valor);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-black relative">
@@ -142,24 +143,51 @@ const VentaForm = ({ onGuardar }) => {
               />
             </div>
 
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+            <div className="relative">
+              <div className="relative">
                 <Package className="absolute left-3 top-3 text-gray-400" size={18} />
                 <input
-                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  type="text" placeholder="SKU / Código" value={sku} onChange={(e) => setSku(e.target.value)} onBlur={buscarProducto}
+                  className="w-full pl-10 pr-10 py-2 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  type="text" 
+                  placeholder="Buscar por Nombre o SKU..." 
+                  value={busqueda} 
+                  onChange={(e) => setBusqueda(e.target.value)}
                 />
+                {busqueda && (
+                  <button onClick={() => {setBusqueda(''); setProductoActual(null);}} className="absolute right-3 top-3 text-gray-400 hover:text-red-500">
+                    <X size={18} />
+                  </button>
+                )}
               </div>
-              <button type="button" onClick={buscarProducto} className="p-3 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">
-                <Search size={20} className="text-gray-600" />
-              </button>
+
+              {/* LISTA DE SUGERENCIAS */}
+              {sugerencias.length > 0 && !productoActual && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-100 rounded-2xl shadow-2xl max-h-60 overflow-auto">
+                  {sugerencias.map((p) => (
+                    <div 
+                      key={p.sku} 
+                      onClick={() => seleccionarProducto(p)}
+                      className="p-4 hover:bg-blue-50 cursor-pointer border-b last:border-0 flex justify-between items-center transition-colors"
+                    >
+                      <div>
+                        <p className="text-xs font-black text-gray-900 uppercase">{p.nombre}</p>
+                        <p className="text-[10px] text-gray-400 font-mono">{p.sku}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-black text-blue-600">{formatearCOP(p.precio_venta)}</p>
+                        <p className="text-[10px] font-bold text-gray-400">STOCK: {p.stock}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {productoActual && (
               <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 animate-in zoom-in duration-300 space-y-4">
                 <div className="flex justify-between items-start">
                   <p className="font-bold text-blue-900 text-xs uppercase">{productoActual.nombre}</p>
-                  <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-1 rounded-lg">
+                  <span className={`text-[10px] font-black px-2 py-1 rounded-lg text-white ${productoActual.stock < 5 ? 'bg-red-500' : 'bg-blue-600'}`}>
                     STOCK: {productoActual.stock}
                   </span>
                 </div>
@@ -193,8 +221,9 @@ const VentaForm = ({ onGuardar }) => {
         </div>
       </div>
 
-      {/* PANEL DERECHO: DETALLE */}
+      {/* PANEL DERECHO: DETALLE (Se mantiene igual) */}
       <div className="lg:col-span-8 bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[450px]">
+        {/* ... (resto del código igual) ... */}
         <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
           <h3 className="font-bold text-gray-700 uppercase text-[10px] tracking-widest flex items-center gap-2">
             <Calculator size={16} /> Detalle de Factura
@@ -229,8 +258,9 @@ const VentaForm = ({ onGuardar }) => {
         </div>
       </div>
 
-      {/* MODAL DE CAMBIO */}
+      {/* MODAL DE CAMBIO (Se mantiene igual) */}
       {mostrarVuelto && (
+        // ... (resto del modal igual) ...
         <div className="fixed inset-0 bg-[#0A1F44]/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] w-full max-w-md p-10 shadow-2xl animate-in zoom-in duration-300">
             <div className="text-center mb-8">
@@ -238,15 +268,12 @@ const VentaForm = ({ onGuardar }) => {
                 <CheckCircle size={40} />
               </div>
               <h3 className="text-3xl font-black text-gray-900">Venta Exitosa</h3>
-              <p className="text-gray-500 font-medium">Calculando el cambio para el cliente</p>
             </div>
-
             <div className="space-y-6 bg-gray-50 p-8 rounded-[2rem] border border-gray-100">
               <div className="flex justify-between items-center text-sm border-b pb-4">
                 <span className="text-gray-400 font-black uppercase">A cobrar</span>
                 <span className="text-xl font-black text-gray-900">{formatearCOP(totalVenta)}</span>
               </div>
-              
               <div className="space-y-3">
                 <label className="text-[10px] font-black text-blue-600 uppercase block ml-1">Dinero Recibido ($)</label>
                 <div className="relative">
@@ -258,7 +285,6 @@ const VentaForm = ({ onGuardar }) => {
                   />
                 </div>
               </div>
-
               <div className="pt-4 flex justify-between items-center">
                 <span className="font-black text-gray-400 uppercase text-[10px]">Vuelto</span>
                 <span className={`text-4xl font-black tracking-tighter ${cambio < 0 ? 'text-red-500' : 'text-green-600'}`}>
@@ -266,7 +292,6 @@ const VentaForm = ({ onGuardar }) => {
                 </span>
               </div>
             </div>
-
             <button 
               onClick={finalizarProceso} 
               className="w-full mt-10 py-5 bg-green-600 hover:bg-green-700 text-white rounded-3xl font-black text-xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 uppercase"

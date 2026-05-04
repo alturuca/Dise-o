@@ -1,22 +1,66 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle2, XCircle, MoreVertical } from 'lucide-react';
+import axios from 'axios';
+import { AlertTriangle, CheckCircle2, XCircle, Trash2, Edit } from 'lucide-react';
 
-const InventarioTable = ({ productos }) => {
+const PRODUCTOS_API = 'http://127.0.0.1:8000/api/v1/productos/';
+
+const InventarioTable = ({ productos, setProductos }) => {
   const formatearMoneda = (valor) =>
     new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(valor);
 
+  // --- FUNCIÓN PARA ELIMINAR DESDE EL FRONTEND ---
+  const manejarEliminar = async (sku, nombre) => {
+  // 1. Verificación de seguridad para el estado
+    if (typeof setProductos !== 'function') {
+      console.error("Error: setProductos no está definido como función.");
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    
+    if (window.confirm(`¿Estás seguro de eliminar "${nombre}" del inventario?`)) {
+      try {
+        // 2. Intento de eliminación física en el backend
+        const response = await axios.delete(`${PRODUCTOS_API}${sku}/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        // 3. Si tiene éxito (status 204), actualizamos la interfaz
+        setProductos(productos.filter(p => p.sku !== sku));
+        alert("Producto eliminado exitosamente.");
+
+      } catch (error) {
+        console.error("Detalle del error al eliminar:", error);
+
+        // 4. Manejo de errores específicos (como el 400 por historial)
+        if (error.response) {
+          // Capturamos el mensaje de error configurado en el backend
+          const mensajeServidor = error.response.data.error || error.response.data.detail;
+          
+          if (error.response.status === 400) {
+            alert(`Restricción de Inventario: ${mensajeServidor}`);
+          } else if (error.response.status === 401) {
+            alert("Sesión expirada. Por favor, vuelve a iniciar sesión.");
+          } else {
+            alert("Error interno del servidor. Revisa los logs de Django.");
+          }
+        } else {
+          alert("No se pudo conectar con el servidor de StocklyX.");
+        }
+      }
+    }
+  };
   return (
-    <div className="overflow-x-auto text-black">
+    <div className="overflow-x-auto text-black bg-white rounded-[2rem] shadow-sm border border-gray-100">
       <table className="w-full text-left text-sm">
         <thead className="bg-gray-50 text-gray-400 uppercase text-[10px] font-black border-b border-gray-100">
           <tr>
             <th className="px-6 py-4">SKU / Identificador</th>
             <th className="px-6 py-4">Producto / Descripción</th>
-            <th className="px-6 py-4">Precio Compra</th>
-            <th className="px-6 py-4">Precio Venta</th>
-            <th className="px-6 py-4">Stock</th>
-            <th className="px-6 py-4">Estado</th>
-            <th className="px-6 py-4">Acciones</th>
+            <th className="px-6 py-4 text-right">Precio Venta</th>
+            <th className="px-6 py-4 text-center">Stock</th>
+            <th className="px-6 py-4 text-center">Estado</th>
+            <th className="px-6 py-4 text-center">Acciones</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
@@ -33,16 +77,13 @@ const InventarioTable = ({ productos }) => {
                   <span className="text-[11px] text-gray-400 truncate max-w-[150px]">{p.descripcion}</span>
                 </div>
               </td>
-              <td className="px-6 py-4 text-gray-500 italic">
-                {formatearMoneda(p.precio_compra)}
-              </td>
-              <td className="px-6 py-4">
+              <td className="px-6 py-4 text-right">
                 <span className="font-black text-blue-600">{formatearMoneda(p.precio_venta)}</span>
               </td>
-              <td className="px-6 py-4 font-black">
+              <td className="px-6 py-4 text-center font-black">
                 {p.stock}
               </td>
-              <td className="px-6 py-4">
+              <td className="px-6 py-4 text-center">
                 {p.stock === 0 ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-50 text-red-600 text-[10px] font-black uppercase">
                     <XCircle size={12} /> Agotado
@@ -57,20 +98,27 @@ const InventarioTable = ({ productos }) => {
                   </span>
                 )}
               </td>
-              <td className="px-6 py-4">
-                <button className="p-2 hover:bg-gray-200 rounded-lg text-gray-400 transition-colors">
-                  <MoreVertical size={16} />
-                </button>
+              <td className="px-6 py-4 text-center">
+                <div className="flex items-center justify-center gap-2">
+                  {/* Botón de editar (funcionalidad base) */}
+                  <button className="p-2 hover:bg-blue-50 text-blue-400 hover:text-blue-600 rounded-lg transition-colors">
+                    <Edit size={16} />
+                  </button>
+
+                  {/* BOTÓN ELIMINAR: Solo activo si el stock es 0 según negocio_db.sql */}
+                  {p.stock === 0 && (
+                    <button 
+                      onClick={() => manejarEliminar(p.sku, p.nombre)}
+                      className="p-2 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors"
+                      title="Eliminar producto agotado"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
-          {productos.length === 0 && (
-            <tr>
-              <td colSpan="7" className="px-6 py-20 text-center text-gray-400 font-medium">
-                No se encontraron productos en el inventario.
-              </td>
-            </tr>
-          )}
         </tbody>
       </table>
     </div>

@@ -83,7 +83,7 @@ const Reportes = () => {
         </div>
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tighter">Análisis de Negocio</h1>
-          <p className="text-sm text-gray-500 font-medium tracking-tight">Rendimiento financiero en Popayán.</p>
+          <p className="text-sm text-gray-500 font-medium tracking-tight">Rendimiento financiero en Guadalupe.</p>
         </div>
       </div>
 

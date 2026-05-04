@@ -11,8 +11,9 @@ import {
 } from 'lucide-react';
 
 const ReporteVentas = () => {
+  // Inicializamos con valores en 0 para que las tarjetas no rompan mientras carga la API
   const [ventas, setVentas] = useState([]);
-  const [datosStats, setDatosStats] = useState(null);
+  const [datosStats, setDatosStats] = useState({ hoy: 0, mes: 0, utilidad: 0 });
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
@@ -24,24 +25,20 @@ const ReporteVentas = () => {
       const token = localStorage.getItem('access_token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
       
-      // 1. Endpoint Unificado: Usamos el que ya calcula totales reales en Django
       const resStats = await axios.get('http://127.0.0.1:8000/api/v1/reporte-ventas/', config);
-      
-      // Sincronizamos con la llave 'totales' del backend
       setDatosStats(resStats.data.totales);
 
-      // 2. Traemos facturas para el listado detallado
       const resFacturas = await axios.get('http://127.0.0.1:8000/api/v1/facturas/', config);
       
-      // Filtrado robusto: Obtenemos la fecha local actual en formato YYYY-MM-DD
-      const hoy = new Date();
-      const hoyStr = new Date().toISOString().split('T')[0]; // Retorna YYYY-MM-DD
+      // ✅ SOLUCIÓN AL ERROR DE FECHA: Usar fecha local de Colombia (YYYY-MM-DD)
+      // .toLocaleDateString('en-CA') siempre devuelve YYYY-MM-DD sin problemas de zona horaria
+      const hoyLocal = new Date().toLocaleDateString('en-CA'); 
       
-      const facturasHoy = resFacturas.data.filter(f => f.fecha.includes(hoyStr));
+      const facturasHoy = resFacturas.data.filter(f => f.fecha.startsWith(hoyLocal));
       
       setVentas(facturasHoy);
     } catch (error) {
-      console.error("Error cargando reporte en StocklyX:", error);
+      console.error("Error cargando reporte:", error);
     } finally {
       setLoading(false);
     }
@@ -57,7 +54,7 @@ const ReporteVentas = () => {
     maximumFractionDigits: 0 
   }).format(v || 0);
 
-  // Ajuste de llaves: usamos .hoy y .mes según el backend
+  // Cálculo de meta basado en el acumulado mensual del backend
   const porcentajeMeta = Math.min(Math.round(((datosStats?.mes || 0) / META_MENSUAL) * 100), 100);
 
   if (loading) return (
@@ -95,11 +92,11 @@ const ReporteVentas = () => {
 
       {/* TARJETAS DE RESUMEN */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* TARJETA HOY: Muestra el acumulado bruto del día */}
         <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-8 rounded-[2.5rem] text-white shadow-xl shadow-blue-900/20 relative overflow-hidden group">
           <TrendingUp size={100} className="absolute -right-4 -top-4 opacity-10 group-hover:scale-110 transition-transform duration-700" />
           <p className="text-blue-100 font-black text-[10px] uppercase tracking-[0.2em]">Total Recaudado Hoy</p>
           <h2 className="text-5xl font-black mt-2 tracking-tighter">
-            {/* Usamos .hoy en lugar de .ventas_dia */}
             {formatearCOP(datosStats?.hoy)}
           </h2>
           <div className="mt-4 flex items-center gap-2">
@@ -107,12 +104,12 @@ const ReporteVentas = () => {
           </div>
         </div>
 
+        {/* TARJETA MES: Muestra el rendimiento mensual contra la meta */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-center relative group">
           <div className="flex justify-between items-end mb-2">
             <div>
               <p className="text-gray-400 font-black text-[10px] uppercase tracking-[0.2em]">Rendimiento Mensual</p>
               <h2 className="text-3xl font-black text-gray-900 mt-1 tracking-tighter">
-                {/* Usamos .mes en lugar de .ventas_mes */}
                 {formatearCOP(datosStats?.mes)}
               </h2>
             </div>
@@ -130,17 +127,17 @@ const ReporteVentas = () => {
             />
           </div>
           <p className="text-[9px] text-gray-400 mt-4 font-black uppercase tracking-widest text-center">
-            Meta: {formatearCOP(META_MENSUAL)}
+            Meta Sugerida: {formatearCOP(META_MENSUAL)}
           </p>
         </div>
       </div>
 
-      {/* TABLA DE FACTURAS */}
+      {/* TABLA DE REGISTROS DETALLADOS */}
       <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-50 bg-gray-50/30 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText size={18} className="text-blue-600" />
-            <h3 className="font-black text-[10px] text-gray-400 uppercase tracking-widest">Registros detallados</h3>
+            <h3 className="font-black text-[10px] text-gray-400 uppercase tracking-widest">Facturas de hoy</h3>
           </div>
           <span className="text-[10px] font-black bg-gray-100 text-gray-500 px-3 py-1 rounded-lg">
             {ventas.length} TRANSACCIONES
@@ -153,7 +150,7 @@ const ReporteVentas = () => {
                 <th className="px-8 py-4"><Hash size={14} /></th>
                 <th className="px-8 py-4">Cliente</th>
                 <th className="px-8 py-4 text-center">Items</th>
-                <th className="px-8 py-4 text-right">Monto</th>
+                <th className="px-8 py-4 text-right">Monto Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">

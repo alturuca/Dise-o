@@ -72,7 +72,10 @@ const Inventario = () => {
 
       {/* TABLA DE PRODUCTOS */}
       <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden">
-        <InventarioTable productos={productosFiltrados} />
+        <InventarioTable
+         productos={productosFiltrados} 
+         setProductos={setProductos}
+         />
       </div>
     </div>
   );
